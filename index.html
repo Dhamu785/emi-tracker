@@ -157,9 +157,13 @@
                     <p class="text-emerald-100 text-sm font-medium">Future Interest Savings</p>
                     <h3 id="savingsDisplay" class="text-2xl font-bold mt-1">₹0</h3>
                 </div>
+                <div class="bg-violet-600 p-6 rounded-2xl shadow-md text-white md:col-span-1">
+                    <p class="text-violet-100 text-sm font-medium">Total Amount Paid</p>
+                    <h3 id="totalAmountPaidDisplay" class="text-2xl font-bold mt-1">₹0</h3>
+                </div>
 
-                <!-- Ratio Bar -->
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 md:col-span-2">
+                <!-- Ratio Bar — full row -->
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 md:col-span-3">
                     <div class="flex justify-between items-center mb-4">
                         <p class="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-tight">Current Payoff Ratio (Unpaid)</p>
                         <span id="savingsBadge" class="hidden px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded uppercase">Extra Paid</span>
@@ -178,11 +182,21 @@
 
         <!-- Table -->
         <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between bg-slate-50/50 dark:bg-slate-800/50">
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/50">
                 <h2 class="font-semibold dark:text-white flex items-center gap-2">
                     Corrected Amortization Schedule
                     <span class="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Mark Paid vs Projected</span>
                 </h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="exportCSV()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-green-50 dark:hover:bg-green-950/30 hover:text-green-700 dark:hover:text-green-400 border border-slate-200 dark:border-slate-700 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                        CSV
+                    </button>
+                    <button onclick="exportPDF()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 border border-slate-200 dark:border-slate-700 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                        PDF
+                    </button>
+                </div>
             </div>
             <div class="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
                 <table class="w-full text-left border-collapse">
@@ -344,6 +358,7 @@
                 document.getElementById('totalRemainingInterestDisplay').innerText = formatCurrency(0);
                 document.getElementById('totalPrincipalPaidDisplay').innerText = formatCurrency(0);
                 document.getElementById('monthsRemainingDisplay').innerText = '0';
+                document.getElementById('totalAmountPaidDisplay').innerText = formatCurrency(0);
                 document.getElementById('savingsDisplay').innerText = formatCurrency(0);
                 document.getElementById('pBar').style.width = '0%';
                 document.getElementById('iBar').style.width = '0%';
@@ -590,6 +605,7 @@
             document.getElementById('totalRemainingInterestDisplay').innerText = formatCurrency(totalInterestRemaining);
             document.getElementById('totalPrincipalPaidDisplay').innerText = formatCurrency(totalPrincipalPaidSoFar);
             document.getElementById('monthsRemainingDisplay').innerText = unpaidMonthsCount;
+            document.getElementById('totalAmountPaidDisplay').innerText = formatCurrency(totalPrincipalPaidSoFar + cumulativeInterestPaid);
             document.getElementById('savingsDisplay').innerText = formatCurrency(interestSaved);
 
             if (totalExtraPaid > 0) {
@@ -608,5 +624,399 @@
             document.getElementById('iLabel').innerText = `Interest: ${iPercent.toFixed(1)}%`;
         }
     </script>
+
+    <!-- Export: zero CDN dependencies, pure JS -->
+    <script>
+        // ── Collect ONLY the schedule table rows (no meta) ───────────────────
+        function getTableData() {
+            const headers = ['Month','Paid?','Opening Bal (INR)','Interest (INR)','Principal EMI (INR)','Extra Principal (INR)','Closing Bal (INR)'];
+            const rows = [];
+            for (const tr of document.getElementById('scheduleBody').rows) {
+                const c = tr.cells;
+                rows.push([
+                    c[0].textContent.trim(),
+                    c[1].querySelector('input') ? (c[1].querySelector('input').checked ? 'Yes' : 'No') : '',
+                    c[2].textContent.trim().replace(/[^\d.]/g,''),
+                    c[3].textContent.trim().replace(/[^\d.]/g,''),
+                    c[4].textContent.trim().replace(/[^\d.]/g,''),
+                    c[5].querySelector('input') ? (c[5].querySelector('input').value || '0') : '0',
+                    c[6].textContent.trim().replace(/[^\d.]/g,''),
+                ]);
+            }
+            return { headers, rows };
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+        }
+
+        // ── CSV ──────────────────────────────────────────────────────────────
+        function exportCSV() {
+            const { headers, rows } = getTableData();
+            const esc = v => '"' + String(v).replace(/"/g,'""') + '"';
+            const lines = [
+                headers.map(esc).join(','),
+                ...rows.map(r => r.map(esc).join(','))
+            ];
+            triggerDownload(new Blob([lines.join('\r\n')], {type:'text/csv;charset=utf-8;'}), 'emi_schedule.csv');
+        }
+
+        // ── Excel (.xlsx) — pure JS ZIP + OpenXML ────────────────────────────
+        function exportExcel() {
+            const { headers, rows } = getTableData();
+
+            function escXml(s) {
+                return String(s)
+                    .replace(/&/g,'&amp;')
+                    .replace(/</g,'&lt;')
+                    .replace(/>/g,'&gt;')
+                    .replace(/"/g,'&quot;')
+                    .replace(/'/g,'&apos;');
+            }
+
+            // Build shared strings table for text values
+            const sharedStrings = [];
+            const ssMap = {};
+            function getSS(val) {
+                const s = String(val);
+                if (ssMap[s] === undefined) { ssMap[s] = sharedStrings.length; sharedStrings.push(s); }
+                return ssMap[s];
+            }
+
+            // Pre-populate shared strings
+            [headers, ...rows].forEach(row => row.forEach(v => {
+                const n = parseFloat(v);
+                if (isNaN(n) || v === '') getSS(v);
+            }));
+
+            function buildSheetXml(data) {
+                let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+                xml += '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
+                xml += '<sheetData>';
+                data.forEach((row, ri) => {
+                    xml += '<row r="'+(ri+1)+'">';
+                    row.forEach((val, ci) => {
+                        const colLetter = ci < 26 ? String.fromCharCode(65+ci) : 'A'+String.fromCharCode(65+ci-26);
+                        const ref = colLetter+(ri+1);
+                        const n = parseFloat(val);
+                        if (!isNaN(n) && val !== '') {
+                            xml += '<c r="'+ref+'" s="'+(ri===0?1:0)+'"><v>'+n+'</v></c>';
+                        } else {
+                            const idx = getSS(val);
+                            xml += '<c r="'+ref+'" t="s" s="'+(ri===0?1:0)+'"><v>'+idx+'</v></c>';
+                        }
+                    });
+                    xml += '</row>';
+                });
+                xml += '</sheetData></worksheet>';
+                return xml;
+            }
+
+            function buildSSXml() {
+                let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+                xml += '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="'+sharedStrings.length+'" uniqueCount="'+sharedStrings.length+'">';
+                sharedStrings.forEach(s => { xml += '<si><t>'+escXml(s)+'</t></si>'; });
+                xml += '</sst>';
+                return xml;
+            }
+
+            const styleXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                +'<fonts><font><sz val="10"/><name val="Calibri"/></font>'
+                +'<font><sz val="10"/><name val="Calibri"/><b/><color rgb="FFFFFFFF"/></font></fonts>'
+                +'<fills><fill><patternFill patternType="none"/></fill>'
+                +'<fill><patternFill patternType="gray125"/></fill>'
+                +'<fill><patternFill patternType="solid"><fgColor rgb="FF1E3A5F"/></patternFill></fill></fills>'
+                +'<borders><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+                +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+                +'<cellXfs>'
+                +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'  // s=0 normal
+                +'<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'  // s=1 header
+                +'</cellXfs></styleSheet>';
+
+            const scheduleData = [headers, ...rows];
+            const sheetXml = buildSheetXml(scheduleData);
+            const ssXml = buildSSXml();
+
+            // UTF-8 encode
+            const enc = new TextEncoder();
+            function toBytes(str) { return enc.encode(str); }
+
+            function crc32(buf) {
+                const t = new Uint32Array(256);
+                for (let i=0;i<256;i++){let v=i;for(let j=0;j<8;j++)v=v&1?0xEDB88320^(v>>>1):v>>>1;t[i]=v;}
+                let c=0xFFFFFFFF;
+                for (let i=0;i<buf.length;i++) c=t[(c^buf[i])&0xFF]^(c>>>8);
+                return (c^0xFFFFFFFF)>>>0;
+            }
+            function u16LE(n){return [n&0xFF,(n>>8)&0xFF];}
+            function u32LE(n){return [n&0xFF,(n>>8)&0xFF,(n>>16)&0xFF,(n>>24)&0xFF];}
+
+            const zipFiles = {
+                '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+                '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+                'xl/workbook.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Schedule" sheetId="1" r:id="rId1"/></sheets></workbook>',
+                'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+                'xl/worksheets/sheet1.xml': sheetXml,
+                'xl/sharedStrings.xml': ssXml,
+                'xl/styles.xml': styleXml,
+            };
+
+            const centralDir = [];
+            const localParts = [];
+            let localOffset = 0;
+
+            for (const [name, content] of Object.entries(zipFiles)) {
+                const nameBytes = toBytes(name);
+                const dataBytes = toBytes(content);
+                const crc = crc32(dataBytes);
+                const sz = dataBytes.length;
+
+                const local = new Uint8Array([
+                    0x50,0x4B,0x03,0x04,
+                    0x14,0x00, 0x00,0x00, 0x00,0x00,
+                    0x00,0x00,0x00,0x00,
+                    ...u32LE(crc),
+                    ...u32LE(sz), ...u32LE(sz),
+                    ...u16LE(nameBytes.length), 0x00,0x00,
+                    ...nameBytes
+                ]);
+                const central = new Uint8Array([
+                    0x50,0x4B,0x01,0x02,
+                    0x14,0x00,0x14,0x00,
+                    0x00,0x00, 0x00,0x00,
+                    0x00,0x00,0x00,0x00,
+                    ...u32LE(crc),
+                    ...u32LE(sz), ...u32LE(sz),
+                    ...u16LE(nameBytes.length),
+                    0x00,0x00, 0x00,0x00,
+                    0x00,0x00, 0x00,0x00,0x00,0x00,
+                    ...u32LE(localOffset),
+                    ...nameBytes
+                ]);
+                centralDir.push(central);
+                localParts.push(local, dataBytes);
+                localOffset += local.length + dataBytes.length;
+            }
+
+            const centralBytes = centralDir.reduce((acc, b) => { const n = new Uint8Array(acc.length+b.length); n.set(acc); n.set(b,acc.length); return n; }, new Uint8Array(0));
+            const eocd = new Uint8Array([
+                0x50,0x4B,0x05,0x06,
+                0x00,0x00, 0x00,0x00,
+                ...u16LE(Object.keys(zipFiles).length),
+                ...u16LE(Object.keys(zipFiles).length),
+                ...u32LE(centralBytes.length),
+                ...u32LE(localOffset),
+                0x00,0x00
+            ]);
+
+            // Concat all parts
+            const totalLen = localParts.reduce((s,b)=>s+b.length,0) + centralBytes.length + eocd.length;
+            const out = new Uint8Array(totalLen);
+            let pos = 0;
+            for (const b of localParts) { out.set(b, pos); pos += b.length; }
+            out.set(centralBytes, pos); pos += centralBytes.length;
+            out.set(eocd, pos);
+
+            triggerDownload(new Blob([out], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), 'emi_schedule.xlsx');
+        }
+
+        // ── PDF — A4 Portrait, multi-page, clean grid ───────────────────────
+        function exportPDF() {
+            const { headers, rows } = getTableData();
+
+            // A4 Portrait: 595 x 842 pt
+            const PW = 595, PH = 842;
+            const ML = 24, MR = 24, MT = 54, MB = 30;
+            const tableW = PW - ML - MR;   // 547 pt
+            // col widths must sum to tableW=547
+            const colW = [28, 22, 100, 90, 100, 100, 107];
+            const HDR_H = 17, ROW_H = 13;
+            // usable height per page for rows
+            const TITLE_H = 26; // title bar on page 1
+            const rows_p1 = Math.floor((PH - MT - TITLE_H - HDR_H - MB) / ROW_H);
+            const rows_pN = Math.floor((PH - MT - HDR_H - MB) / ROW_H);
+            const ROWS_PER_PAGE = (p) => p === 0 ? rows_p1 : rows_pN;
+
+            function pdfStr(s) {
+                return String(s)
+                    .replace(/[^\x20-\x7E]/g, '')
+                    .replace(/\\/g, '\\\\')
+                    .replace(/\(/g, '\\(')
+                    .replace(/\)/g, '\\)');
+            }
+
+            const enc = new TextEncoder();
+            let pdfBytes = new Uint8Array(0);
+            function appendStr(s) {
+                const b = enc.encode(s);
+                const n = new Uint8Array(pdfBytes.length + b.length);
+                n.set(pdfBytes); n.set(b, pdfBytes.length);
+                pdfBytes = n;
+            }
+
+            appendStr('%PDF-1.4\n');
+
+            const objOffsets = [];
+            let nextId = 1;
+            function startObj() { objOffsets.push(pdfBytes.length); appendStr(nextId + ' 0 obj\n'); return nextId++; }
+            function endObj()   { appendStr('endobj\n'); }
+
+            // ── Slice rows into pages ─────────────────────────────────────────
+            const pages = [];
+            let remaining = rows.slice();
+            let pg = 0;
+            while (remaining.length > 0) {
+                const take = ROWS_PER_PAGE(pg);
+                pages.push(remaining.splice(0, take));
+                pg++;
+            }
+            if (pages.length === 0) pages.push([]); // at least one page
+
+            const pageCount = pages.length;
+
+            // ── Build content stream for each page ───────────────────────────
+            const pageStreams = [];
+
+            for (let p = 0; p < pageCount; p++) {
+                const pageRows = pages[p];
+                let s = '';
+
+                // Title bar — first page only
+                let cursorY = PH - MT;
+                if (p === 0) {
+                    s += '0.118 0.227 0.373 rg\n';
+                    s += ML + ' ' + cursorY + ' ' + tableW + ' ' + TITLE_H + ' re f\n';
+                    s += '1 1 1 rg\n';
+                    s += 'BT /F2 11 Tf ' + (ML + 5) + ' ' + (cursorY + 7) + ' Td (EMI Amortization Schedule) Tj ET\n';
+                    cursorY -= TITLE_H;
+                }
+
+                // Column header bar
+                const headerTop = cursorY;
+                s += '0.118 0.227 0.373 rg\n';
+                s += ML + ' ' + (headerTop - HDR_H) + ' ' + tableW + ' ' + HDR_H + ' re f\n';
+                s += '1 1 1 rg\n';
+                let hx = ML;
+                headers.forEach((h, i) => {
+                    s += 'BT /F2 6 Tf ' + (hx + 2) + ' ' + (headerTop - HDR_H + 5) + ' Td (' + pdfStr(h) + ') Tj ET\n';
+                    hx += colW[i];
+                });
+                cursorY = headerTop - HDR_H;
+
+                // Data rows
+                const rowsTop = cursorY; // top of first data row area = bottom of header
+                pageRows.forEach((row, ri) => {
+                    const rowY = cursorY - ROW_H;
+
+                    // Row fill
+                    if (row[1] === 'Yes') {
+                        s += '0.859 0.918 0.996 rg\n';
+                    } else {
+                        s += (ri % 2 === 0 ? '1 1 1 rg\n' : '0.957 0.957 0.957 rg\n');
+                    }
+                    s += ML + ' ' + rowY + ' ' + tableW + ' ' + ROW_H + ' re f\n';
+
+                    // Cell text
+                    let cx = ML;
+                    row.forEach((val, ci) => {
+                        if      (ci === 3) s += '0.72 0.15 0.15 rg\n';
+                        else if (ci === 5) s += '0.08 0.45 0.30 rg\n';
+                        else               s += '0.12 0.12 0.12 rg\n';
+                        s += 'BT /F1 6 Tf ' + (cx + 2) + ' ' + (rowY + 4) + ' Td (' + pdfStr(val) + ') Tj ET\n';
+                        cx += colW[ci];
+                    });
+
+                    cursorY = rowY;
+                });
+
+                const tableBottom = cursorY; // y coordinate of bottom edge of last row
+
+                // ── Draw grid lines ONCE, cleanly ──────────────────────────────
+                // Outer border
+                s += '0.55 0.55 0.55 RG 0.4 w\n';
+                s += ML + ' ' + tableBottom + ' ' + tableW + ' ' + (headerTop - tableBottom) + ' re S\n';
+
+                // Horizontal line under header
+                s += '0.55 0.55 0.55 RG 0.4 w\n';
+                s += ML + ' ' + rowsTop + ' m ' + (ML + tableW) + ' ' + rowsTop + ' l S\n';
+
+                // Horizontal lines between rows (only between rows, not at bottom — outer border covers it)
+                s += '0.80 0.80 0.80 RG 0.25 w\n';
+                let lineY = rowsTop;
+                for (let ri = 0; ri < pageRows.length - 1; ri++) {
+                    lineY -= ROW_H;
+                    s += ML + ' ' + lineY + ' m ' + (ML + tableW) + ' ' + lineY + ' l S\n';
+                }
+
+                // Vertical column dividers (inside only, not outer edges — outer border covers those)
+                s += '0.80 0.80 0.80 RG 0.25 w\n';
+                let vx = ML;
+                for (let ci = 0; ci < colW.length - 1; ci++) {
+                    vx += colW[ci];
+                    s += vx + ' ' + tableBottom + ' m ' + vx + ' ' + headerTop + ' l S\n';
+                }
+
+                // Footer
+                s += '0.55 0.55 0.55 rg\n';
+                s += 'BT /F1 6.5 Tf ' + (PW / 2 - 50) + ' ' + (MB - 10) + ' Td (Page ' + (p + 1) + ' of ' + pageCount + '   |   Generated: ' + new Date().toLocaleDateString('en-IN') + ') Tj ET\n';
+
+                pageStreams.push(s);
+            }
+
+            // ── Write PDF objects ─────────────────────────────────────────────
+            // IDs: 1=catalog, 2=pages, 3=fontRegular, 4=fontBold,
+            //      then pairs (pageObj, streamObj) for each page: 5,6 / 7,8 / ...
+            const fontRegId = 3, fontBoldId = 4;
+            const pageObjIds   = Array.from({length: pageCount}, (_, i) => 5 + i * 2);
+            const streamObjIds = Array.from({length: pageCount}, (_, i) => 6 + i * 2);
+
+            // 1: Catalog
+            startObj(); appendStr('<</Type /Catalog /Pages 2 0 R>>\n'); endObj();
+            // 2: Pages
+            startObj();
+            appendStr('<</Type /Pages /Kids [' + pageObjIds.map(id => id + ' 0 R').join(' ') + '] /Count ' + pageCount + '>>\n');
+            endObj();
+            // 3: Regular font
+            startObj(); appendStr('<</Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding>>\n'); endObj();
+            // 4: Bold font
+            startObj(); appendStr('<</Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding>>\n'); endObj();
+
+            // Page + stream pairs
+            for (let p = 0; p < pageCount; p++) {
+                const sc = pageStreams[p];
+                const sb = enc.encode(sc).length;
+                // Page obj
+                startObj();
+                appendStr('<</Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PW + ' ' + PH + ']\n');
+                appendStr('/Contents ' + streamObjIds[p] + ' 0 R\n');
+                appendStr('/Resources <</Font <</F1 ' + fontRegId + ' 0 R /F2 ' + fontBoldId + ' 0 R>>>>>>\n');
+                endObj();
+                // Stream obj
+                startObj();
+                appendStr('<</Length ' + sb + '>>\nstream\n');
+                appendStr(sc);
+                appendStr('\nendstream\n');
+                endObj();
+            }
+
+            // xref + trailer
+            const xrefOffset = pdfBytes.length;
+            const total = objOffsets.length + 1;
+            appendStr('xref\n0 ' + total + '\n');
+            appendStr('0000000000 65535 f \n');
+            objOffsets.forEach(o => appendStr(o.toString().padStart(10, '0') + ' 00000 n \n'));
+            appendStr('trailer\n<</Size ' + total + ' /Root 1 0 R>>\n');
+            appendStr('startxref\n' + xrefOffset + '\n%%EOF\n');
+
+            triggerDownload(new Blob([pdfBytes], {type: 'application/pdf'}), 'emi_schedule.pdf');
+        }
+    </script>
+
 </body>
 </html>
